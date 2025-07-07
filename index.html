@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>学生满意度评价数据分析看板</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.bootcdn.net/ajax/libs/echarts/5.4.2/echarts.min.js"></script>
+    <script src="https://cdn.bootcdn.net/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.bootcdn.net/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    
+    <!-- 多个Bootstrap Icons CDN备选 -->
+    <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/bootstrap-icons/1.11.1/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.1/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    
+    <script>
+        window.addEventListener('DOMContentLoaded', function() {
+            // 检查库是否正确加载
+            if (typeof XLSX === 'undefined') {
+                console.error('XLSX 库加载失败，尝试从本地加载');
+                // 如果您有本地备份，可以在这里加载
+                var script = document.createElement('script');
+                script.src = 'js/libs/xlsx.full.min.js';
+                document.head.appendChild(script);
+            }
+            if (typeof Papa === 'undefined') {
+                console.error('Papa Parse 库加载失败，尝试从本地加载');
+                var script = document.createElement('script');
+                script.src = 'js/libs/papaparse.min.js';
+                document.head.appendChild(script);
+            }
+            if (typeof echarts === 'undefined') {
+                console.error('ECharts 库加载失败，尝试从本地加载');
+                var script = document.createElement('script');
+                script.src = 'js/libs/echarts.min.js';
+                document.head.appendChild(script);
+            }
+            
+            // 检查Bootstrap Icons是否正确加载
+            setTimeout(function() {
+                const testElement = document.createElement('i');
+                testElement.className = 'bi bi-check';
+                testElement.style.position = 'absolute';
+                testElement.style.left = '-9999px';
+                document.body.appendChild(testElement);
+                const fontFamily = getComputedStyle(testElement).fontFamily;
+                document.body.removeChild(testElement);
+                
+                if (!fontFamily.includes('bootstrap-icons')) {
+                    console.warn('Bootstrap Icons 可能未正确加载');
+                }
+            }, 100);
+        });
+    </script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>学生满意度评价数据分析看板</h1>
+        </header>
+        
+        <section id="upload-section" class="upload-section">
+            <div class="section-header">
+                <h2>上传数据</h2>
+                <button id="minimize-btn" class="icon-btn hidden"><i class="bi bi-chevron-up"></i></button>
+            </div>
+            <div id="upload-content" class="upload-content">
+                <!-- 评价数据上传 -->
+                <div class="upload-group">
+                    <h3>评价数据</h3>
+                    <div class="file-upload-wrapper">
+                        <div class="file-upload-area">
+                            <i class="bi bi-cloud-arrow-up upload-icon"></i>
+                            <div class="upload-text">
+                                <p>拖拽评价数据文件到此处或点击选择文件</p>
+                                <p class="upload-hint">支持 .xlsx, .xls, .csv 格式</p>
+                            </div>
+                            <input type="file" id="file-upload" accept=".xlsx,.xls,.csv">
+                        </div>
+                        <div id="file-info" class="file-info hidden">
+                            <div class="file-name-container">
+                                <i class="bi bi-file-earmark-spreadsheet file-icon"></i>
+                                <span id="selected-filename">未选择文件</span>
+                            </div>
+                            <button id="change-file-btn" class="secondary-btn">更换文件</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 主讲老师信息上传 -->
+                <div class="upload-group">
+                    <h3>主讲老师信息</h3>
+                    <div class="file-upload-wrapper">
+                        <div class="file-upload-area teacher-upload-area">
+                            <i class="bi bi-cloud-arrow-up upload-icon"></i>
+                            <div class="upload-text">
+                                <p>拖拽主讲老师信息文件到此处或点击选择文件</p>
+                                <p>文件获取方式：供应链-课程管理-课程列表-下载数据-课程场次</p>
+                                <p class="upload-hint">支持 .xlsx, .xls, .csv 格式</p>
+                            </div>
+                            <input type="file" id="teacher-file-upload" accept=".xlsx,.xls,.csv">
+                        </div>
+                        <div id="teacher-file-info" class="file-info hidden">
+                            <div class="file-name-container">
+                                <i class="bi bi-file-earmark-spreadsheet file-icon"></i>
+                                <span id="teacher-selected-filename">未选择文件</span>
+                            </div>
+                            <button id="teacher-change-file-btn" class="secondary-btn">更换文件</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <button id="upload-btn" class="primary-btn">分析数据</button>
+            </div>
+            
+            <div id="upload-collapsed" class="upload-collapsed hidden">
+                <div class="selected-file-info">
+                    <i class="bi bi-file-earmark-spreadsheet file-icon"></i>
+                    <span id="collapsed-filename">未选择文件</span>
+                    <span class="file-separator">|</span>
+                    <span id="collapsed-teacher-filename">未选择主讲老师文件</span>
+                </div>
+                <button id="expand-btn" class="secondary-btn">更换数据</button>
+            </div>
+        </section>
+
+        <div id="loading" class="loading hidden">
+            <div class="spinner"></div>
+            <p>数据处理中，请稍候...</p>
+        </div>
+        
+        <div id="floating-btn" class="floating-btn hidden">
+            <button id="reupload-btn" title="重新上传数据">
+                <i class="bi bi-arrow-up-circle-fill"></i>
+            </button>
+        </div>
+        
+        <!-- 左侧导航菜单 -->
+        <div id="side-nav" class="side-nav hidden">
+            <div class="nav-item" data-target="dashboard" title="数据看板">
+                <div class="nav-circle">
+                    <i class="bi bi-bar-chart-fill"></i>
+                </div>
+                <div class="nav-label">数据看板</div>
+            </div>
+            <div class="nav-item" data-target="teacher-analysis" title="主讲老师分析">
+                <div class="nav-circle">
+                    <i class="bi bi-person-fill"></i>
+                </div>
+                <div class="nav-label">主讲老师分析</div>
+            </div>
+            <div class="nav-item" data-target="comments-section" title="学生评价内容">
+                <div class="nav-circle">
+                    <i class="bi bi-chat-dots-fill"></i>
+                </div>
+                <div class="nav-label">学生评价内容</div>
+            </div>
+        </div>
+        
+        <!-- 皮肤选择器 - 始终显示 -->
+        <div id="theme-selector" class="theme-selector">
+            <div class="nav-item theme-nav-item" id="theme-toggle" title="皮肤选择">
+                <div class="nav-circle theme-circle">
+                    <i class="bi bi-palette-fill"></i>
+                </div>
+                <div class="nav-label">选择</div>
+            </div>
+        </div>
+        
+        <!-- 皮肤选择抽屉 -->
+        <div id="theme-drawer" class="theme-drawer hidden">
+            <div class="theme-drawer-header">
+                <h3>选择样式</h3>
+                <button id="theme-drawer-close" class="drawer-close-btn">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+            <div class="theme-options">
+                <div class="theme-option active" data-theme="standard">
+                    <div class="theme-preview standard-preview">
+                        <div class="preview-header"></div>
+                        <div class="preview-body">
+                            <div class="preview-sidebar"></div>
+                            <div class="preview-content"></div>
+                        </div>
+                    </div>
+                    <div class="theme-info">
+                        <h4>标准样式</h4>
+                        <p>经典蓝白主题，适合日常使用</p>
+                    </div>
+                </div>
+                
+                <div class="theme-option" data-theme="eye-care">
+                    <div class="theme-preview eye-care-preview">
+                        <div class="preview-header"></div>
+                        <div class="preview-body">
+                            <div class="preview-sidebar"></div>
+                            <div class="preview-content"></div>
+                        </div>
+                    </div>
+                    <div class="theme-info">
+                        <h4>护眼样式</h4>
+                        <p>暖色调配色，减少眼部疲劳</p>
+                    </div>
+                </div>
+                
+                <div class="theme-option" data-theme="cyberpunk">
+                    <div class="theme-preview cyberpunk-preview">
+                        <div class="preview-header"></div>
+                        <div class="preview-body">
+                            <div class="preview-sidebar"></div>
+                            <div class="preview-content"></div>
+                        </div>
+                    </div>
+                    <div class="theme-info">
+                        <h4>深色样式</h4>
+                        <p>科幻风格，霓虹色彩体验</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <section id="dashboard" class="dashboard hidden">
+            <h2>数据看板</h2>
+            
+            <div class="dashboard-container">
+                <div class="dashboard-card">
+                    <h3>基本统计</h3>
+                    <div id="basic-stats" class="stat-grid"></div>
+                </div>
+                
+                <div class="dashboard-card">
+                    <h3>评分分布</h3>
+                    <div id="score-chart" class="chart"></div>
+                </div>
+                
+                <div class="dashboard-card">
+                    <h3>标签分析</h3>
+                    <div id="label-chart" class="chart"></div>
+                </div>
+                
+                <div class="dashboard-card">
+                    <h3>设备分布</h3>
+                    <div id="device-chart" class="chart"></div>
+                </div>
+                
+                <div class="dashboard-card">
+                    <h3>版本分布</h3>
+                    <div id="version-chart" class="chart"></div>
+                </div>
+                
+                <div class="dashboard-card">
+                    <h3>评分趋势</h3>
+                    <div id="time-chart" class="chart"></div>
+                </div>
+            </div>
+        </section>
+        
+        <!-- 主讲老师分析模块 -->
+        <section id="teacher-analysis" class="teacher-analysis hidden">
+            <h2>主讲老师分析</h2>
+            
+            <!-- 筛选和排序控件 -->
+            <div class="teacher-controls">
+                <div class="control-group">
+                    <label for="teacher-name-filter">主讲姓名筛选：</label>
+                    <select id="teacher-name-filter">
+                        <option value="all">全部主讲老师</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label for="teacher-product-line-search">产品线筛选：</label>
+                    <div class="product-line-filter-container">
+                        <input type="text" id="teacher-product-line-search" placeholder="输入产品线关键词筛选" class="product-line-search">
+                        <button type="button" id="clear-product-line" class="clear-btn" title="清空产品线筛选">×</button>
+                    </div>
+                </div>
+                <div class="control-group">
+                    <label for="teacher-grade-filter">年级筛选：</label>
+                    <select id="teacher-grade-filter">
+                        <option value="all">全部年级</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label for="teacher-subject-filter">学科筛选：</label>
+                    <select id="teacher-subject-filter">
+                        <option value="all">全部学科</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label for="teacher-session-search">场次ID搜索：</label>
+                    <div class="session-search-container">
+                        <input type="text" id="teacher-session-search" placeholder="输入场次ID搜索" class="session-search">
+                        <button type="button" id="clear-session" class="clear-btn" title="清空场次ID搜索">×</button>
+                    </div>
+                </div>
+                <div class="control-group">
+                    <label for="teacher-sort-field">排序字段：</label>
+                    <select id="teacher-sort-field">
+                        <option value="fiveStarRate">五星率</option>
+                        <!-- 其他排序选项将通过JavaScript动态生成 -->
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label for="teacher-sort-order">排序方式：</label>
+                    <select id="teacher-sort-order">
+                        <option value="desc">降序</option>
+                        <option value="asc">升序</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <button id="teacher-export-btn" class="secondary-btn">
+                        <i class="bi bi-download"></i>
+                        导出Excel
+                    </button>
+                </div>
+                <div class="control-group">
+                    <button id="teacher-reset-filters" class="reset-btn">
+                        <i class="bi bi-arrow-clockwise"></i>
+                        重置筛选
+                    </button>
+                </div>
+            </div>
+            
+            <div class="teacher-analysis-container">
+                <div class="teacher-table-wrapper">
+                    <table class="teacher-stats-table">
+                        <thead id="teacher-stats-header">
+                            <!-- 表头将通过JavaScript动态生成 -->
+                        </thead>
+                        <tbody id="teacher-stats-body">
+                            <!-- 主讲老师统计数据将在这里动态生成 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+        
+        <section id="comments-section" class="comments-section hidden">
+            <h2>学生评价内容</h2>
+            
+            <!-- 筛选控件 -->
+            <div class="teacher-controls">
+                <div class="control-group">
+                    <label for="comments-teacher-name-filter">主讲姓名筛选：</label>
+                    <select id="comments-teacher-name-filter">
+                        <option value="all">全部主讲老师</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label for="comments-product-line-search">产品线筛选：</label>
+                    <div class="product-line-filter-container">
+                        <input type="text" id="comments-product-line-search" placeholder="输入产品线关键词筛选" class="product-line-search">
+                        <button type="button" id="comments-clear-product-line" class="clear-btn" title="清空产品线筛选">×</button>
+                    </div>
+                </div>
+                <div class="control-group">
+                    <label for="comments-grade-filter">年级筛选：</label>
+                    <select id="comments-grade-filter">
+                        <option value="all">全部年级</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label for="comments-subject-filter">学科筛选：</label>
+                    <select id="comments-subject-filter">
+                        <option value="all">全部学科</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label for="comments-session-search">场次ID搜索：</label>
+                    <div class="session-search-container">
+                        <input type="text" id="comments-session-search" placeholder="输入场次ID搜索" class="session-search">
+                        <button type="button" id="comments-clear-session" class="clear-btn" title="清空场次ID搜索">×</button>
+                    </div>
+                </div>
+                <div class="control-group">
+                    <label for="comments-score-filter">评分筛选：</label>
+                    <select id="comments-score-filter">
+                        <option value="all">全部</option>
+                        <!-- 评分选项将通过JavaScript动态生成 -->
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label for="comments-label-filter">标签筛选：</label>
+                    <select id="comments-label-filter">
+                        <option value="all">全部标签</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <button id="comments-export-btn" class="secondary-btn">
+                        <i class="bi bi-download"></i>
+                        导出Excel
+                    </button>
+                </div>
+                <div class="control-group">
+                    <button id="comments-reset-filters" class="reset-btn">
+                        <i class="bi bi-arrow-clockwise"></i>
+                        重置筛选
+                    </button>
+                </div>
+            </div>
+            
+            <div class="comments-container">
+                <div id="comments-list" class="comments-list">
+                    <!-- 评价内容将在这里动态生成 -->
+                </div>
+                
+                <div class="pagination">
+                    <button id="comments-prev-page">上一页</button>
+                    <span id="comments-page-info">第 1 页 / 共 1 页</span>
+                    <button id="comments-next-page">下一页</button>
+                </div>
+            </div>
+        </section>
+        
+
+    </div>
+    
+    <script src="js/main.js"></script>
+</body>
+</html> 
